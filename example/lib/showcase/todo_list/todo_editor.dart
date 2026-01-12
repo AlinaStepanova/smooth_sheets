@@ -8,9 +8,16 @@ Future<Todo?> showTodoEditor(BuildContext context) {
     context,
     ModalSheetRoute(
       swipeDismissible: true,
-      builder: (context) => const SheetViewport(
-        child: TodoEditor(),
-      ),
+      builder: (context) => TodoEditor(),
+      viewportBuilder: (context, child) {
+        return SheetViewport(
+          padding: EdgeInsets.only(
+            // Add a top padding to avoid the status bar.
+            top: MediaQuery.viewPaddingOf(context).top,
+          ),
+          child: child,
+        );
+      },
     ),
   );
 }
@@ -37,7 +44,7 @@ class _TodoEditorState extends State<TodoEditor> {
     super.dispose();
   }
 
-  Future<void> onPopInvoked(bool didPop) async {
+  Future<void> onPopInvoked(bool didPop, Object? result) async {
     if (didPop) {
       // Already popped.
       return;
@@ -123,46 +130,47 @@ class _TodoEditorState extends State<TodoEditor> {
       ),
     );
 
-    final bottomBar = StickyBottomBarVisibility(
-      child: BottomAppBar(
-        child: Row(
-          children: [
-            _FolderSelector(controller),
-            const Spacer(),
-            _SubmitButton(controller),
-          ],
+    final bottomBar = Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: SafeArea(
+        top: false,
+        child: SizedBox.fromSize(
+          size: const Size.fromHeight(kToolbarHeight),
+          child: Row(
+            children: [
+              _FolderSelector(controller),
+              const Spacer(),
+              _SubmitButton(controller),
+            ],
+          ),
         ),
       ),
     );
 
-    const sheetShape = ShapeDecoration(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-    );
-
-    return SafeArea(
-      bottom: false,
-      child: PopScope(
-        canPop: false,
-        onPopInvoked: onPopInvoked,
-        child: SheetKeyboardDismissible(
-          dismissBehavior: const SheetKeyboardDismissBehavior.onDragDown(
-            isContentScrollAware: true,
-          ),
-          child: ScrollableSheet(
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: sheetShape,
-              child: SheetContentScaffold(
-                resizeBehavior: const ResizeScaffoldBehavior.avoidBottomInset(
-                  // Make the bottom bar visible when the keyboard is open.
-                  maintainBottomBar: true,
-                ),
-                body: body,
-                bottomBar: bottomBar,
-              ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: onPopInvoked,
+      child: SheetKeyboardDismissible(
+        dismissBehavior: const SheetKeyboardDismissBehavior.onDragDown(
+          isContentScrollAware: true,
+        ),
+        child: Sheet(
+          scrollConfiguration: const SheetScrollConfiguration(),
+          decoration: MaterialSheetDecoration(
+            size: SheetSize.stretch,
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
+          ),
+          child: SheetContentScaffold(
+            bottomBarVisibility: const BottomBarVisibility.always(
+              // Make the bottom bar visible when the keyboard is open.
+              ignoreBottomInset: true,
+            ),
+            body: body,
+            bottomBar: bottomBar,
           ),
         ),
       ),
@@ -239,7 +247,7 @@ class _PrioritySelector extends StatelessWidget {
       alignmentOffset: const Offset(0, -_prioritySelectorPopupMenuHeight),
       style: MenuStyle(
         alignment: Alignment.bottomLeft,
-        maximumSize: MaterialStateProperty.all(
+        maximumSize: WidgetStateProperty.all(
           const Size.fromHeight(_prioritySelectorPopupMenuHeight),
         ),
       ),

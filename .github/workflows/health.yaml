@@ -1,0 +1,153 @@
+name: Health 
+on:
+  pull_request:
+
+env:
+  FLUTTER_TEST_REPORT: ${{github.workspace}}/flutter-test-report.json
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      flutter-file-changed: ${{ steps.filter.outputs.flutter-file-changed }}
+      dev-sdk-version-changed: ${{ steps.filter.outputs.dev-sdk-version-changed }}
+      flutter-lower-bound: ${{ steps.flutter-version-constraint.outputs.lower-bound }}
+      flutter-upper-bound: ${{ steps.flutter-version-constraint.outputs.upper-bound }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            flutter-file-changed:
+              - '**.dart'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'example/pubspec.yaml'
+              - 'example/pubspec.lock'
+            dev-sdk-version-changed:
+              - '.fvmrc'
+
+      - name: Get Flutter SDK version constraint
+        id: flutter-version-constraint
+        # Extract the lower bound from pubspec.yaml and the upper bound from .fvmrc
+        run: |
+          sdk_constraint=$(cat pubspec.yaml | yq .environment.flutter)
+          lower_bound=$(echo "$sdk_constraint" | grep -oP '(?<=\>=)[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          upper_bound=$(cat .fvmrc | jq -r .flutter)
+          echo "lower-bound=$lower_bound" >> "$GITHUB_OUTPUT"
+          echo "upper-bound=$upper_bound" >> "$GITHUB_OUTPUT"
+
+      - name: Print output values
+        run: |
+          echo "flutter-file-changed=${{ steps.filter.outputs.flutter-file-changed }}"
+          echo "flutter-lower-bound=${{ steps.flutter-version-constraint.outputs.lower-bound }}"
+          echo "flutter-upper-bound=${{ steps.flutter-version-constraint.outputs.upper-bound }}"
+
+  analysis:
+    needs: setup
+    if: ${{ needs.setup.outputs.flutter-file-changed == 'true' || needs.setup.outputs.dev-sdk-version-changed == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        flutter-version:
+          - ${{ needs.setup.outputs.flutter-lower-bound }}
+          - ${{ needs.setup.outputs.flutter-upper-bound }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: ./.github/actions/setup_flutter
+        with:
+          version: ${{ matrix.flutter-version }}
+
+      - name: Format
+        run: dart format . -o none --set-exit-if-changed
+
+      - name: Analyze
+        run: dart analyze
+
+  testing:
+    needs: setup
+    if: ${{ needs.setup.outputs.flutter-file-changed == 'true' || needs.setup.outputs.dev-sdk-version-changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    strategy:
+      matrix:
+        flutter-version:
+          - ${{ needs.setup.outputs.flutter-lower-bound }}
+          - ${{ needs.setup.outputs.flutter-upper-bound }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: ./.github/actions/setup_flutter
+        with:
+          version: ${{ matrix.flutter-version }}
+
+      - name: Run unit tests
+        run: flutter test --file-reporter="json:${{ env.FLUTTER_TEST_REPORT }}"
+
+      - name: Write test report
+        uses: dorny/test-reporter@v1
+        # PRs from forks have no write permissions, so we skip this step in that case.
+        if: github.event.pull_request.head.repo.fork == false && (success() || failure())
+        with:
+          name: Test Report (with Flutter ${{ matrix.flutter-version }})
+          path: ${{ env.FLUTTER_TEST_REPORT }}
+          reporter: flutter-json
+
+  # Final results (Used for status checks)
+  health:
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    needs: [analysis, testing]
+    steps:
+      # Fails if any of the previous jobs failed.
+      - run: exit 1
+        if: >-
+          ${{
+               contains(needs.*.result, 'failure')
+            || contains(needs.*.result, 'cancelled')
+          }}
+
+  dry-publish:
+    needs: setup
+    if: ${{ needs.setup.outputs.flutter-file-changed == 'true' || needs.setup.outputs.dev-sdk-version-changed == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: ./.github/actions/setup_flutter
+
+      - name: Install pana
+        run: dart pub global activate pana
+
+      - name: Run pana
+        id: analysis
+        run: |
+          pana --json . 2>&1 | grep -v '^{"logName"' > pana-report.json
+          JSON_OUTPUT=$(cat pana-report.json | jq -c .)
+          echo "::set-output name=json_output::$JSON_OUTPUT"
+
+      - uses: fujidaiti/dart-package-inspector@v2
+        with:
+          report: ${{ steps.analysis.outputs.json_output }}
+          min-convention-points: 30
+          min-platform-points: 20
+          min-analysis-points: 40
+          min-dependency-points: 20
+          supported-platforms: ios, android
+
+      - run: flutter pub publish --dry-run

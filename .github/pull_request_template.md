@@ -1,19 +1,8 @@
-## Related issues (optional)
+## Problem / Issue
 
-None.
+<!-- What is the problem this PR addresses? Link the issue if available. -->
+<!-- 例: Closes #123 -->
 
-## Description
+## Solution
 
-Blah blah blah.
-
-## Summary (check all that apply)
-
-- [ ] Modified / added code
-- [ ] Modified / added tests
-- [ ] Modified / added examples
-- [ ] Modified / added others (pubspec.yaml, workflows, etc...)
-- [ ] Updated README
-- [ ] Contains breaking changes
-  - [ ] Created / updated migration guide
-- [ ] Incremented version number
-  - [ ] Updated CHANGELOG
+<!-- Briefly describe how the problem is solved in this PR. -->

@@ -57,9 +57,13 @@ class _ExampleHomeState extends State<_ExampleHome> {
           title: Text(behavior.name),
           subtitle: Text(behavior.description),
           value: behavior,
+          // TODO: Migrate to RadioGroup when minimum SDK version is raised to 3.35.0
+          // ignore: deprecated_member_use
           groupValue: selectedBehavior,
           contentPadding: const EdgeInsets.only(left: 32, right: 16),
           controlAffinity: ListTileControlAffinity.trailing,
+          // TODO: Migrate to RadioGroup when minimum SDK version is raised to 3.35.0
+          // ignore: deprecated_member_use
           onChanged: (value) => setState(() {
             selectedBehavior = value!;
           }),
@@ -133,15 +137,19 @@ class _ExampleHomeState extends State<_ExampleHome> {
       context,
       ModalSheetRoute(
         swipeDismissible: true, // Enable the swipe-to-dismiss behavior.
-        builder: (context) => SafeArea(
-          bottom: false,
-          child: SheetViewport(
-            child: _ExampleSheet(
-              isFullScreen: isFullScreen,
-              keyboardDismissBehavior: keyboardDismissBehavior,
-            ),
-          ),
+        builder: (context) => _ExampleSheet(
+          isFullScreen: isFullScreen,
+          keyboardDismissBehavior: keyboardDismissBehavior,
         ),
+        viewportBuilder: (context, child) {
+          return SheetViewport(
+            padding: EdgeInsets.only(
+              // Add the top padding to avoid the status bar.
+              top: MediaQuery.viewPaddingOf(context).top,
+            ),
+            child: child,
+          );
+        },
       ),
     );
   }
@@ -166,34 +174,41 @@ class _ExampleSheet extends StatelessWidget {
         ),
       ),
     );
-
     if (isFullScreen) {
       body = SizedBox.expand(child: body);
     }
 
+    final bottomBar = ColoredBox(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: SafeArea(
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.menu),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.more_vert),
+            ),
+          ],
+        ),
+      ),
+    );
+
     return SheetKeyboardDismissible(
       dismissBehavior: keyboardDismissBehavior,
-      child: ScrollableSheet(
+      child: Sheet(
+        scrollConfiguration: const SheetScrollConfiguration(),
+        decoration: MaterialSheetDecoration(
+          size: SheetSize.stretch,
+          color: Theme.of(context).colorScheme.secondaryContainer,
+        ),
         child: SheetContentScaffold(
-          appBar: AppBar(),
+          topBar: AppBar(),
           body: body,
-          bottomBar: StickyBottomBarVisibility(
-            child: BottomAppBar(
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.menu),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.more_vert),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          bottomBar: bottomBar,
         ),
       ),
     );
